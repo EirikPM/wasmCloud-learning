@@ -20,8 +20,7 @@ use crate::connection::ConnectionConfig;
 mod bindings {
     wit_bindgen_wrpc::generate!({ generate_all });
 }
-use bindings::exports::wasmcloud::messaging::consumer::Handler;
-use bindings::wasmcloud::messaging::types::BrokerMessage;
+use bindings::exports::wasmcloud::messaging::consumer::{BrokerMessage, Handler};
 
 /// [`NatsClientBundle`]s hold a NATS client and information (subscriptions)
 /// related to it.
@@ -145,6 +144,23 @@ impl NatsMessagingProvider {
 
         Ok(join_handle)
     }
+
+    async fn get_nats_client(&self, ctx: Option<Context>) -> anyhow::Result<async_nats::Client> {
+        if let Some(source_id) = ctx.and_then(|Context { component, .. }| component) {
+            let components = self.components.read().await;
+            let nats_bundle = match components.get(&source_id) {
+                Some(nats_bundle) => nats_bundle,
+                None => {
+                    error!("component not linked: {source_id}");
+                    bail!("component did not make request")
+                }
+            };
+            Ok(nats_bundle.client.clone())
+        } else {
+            error!("component did not make request");
+            bail!("component did not make request")
+        }
+    }
 }
 
 async fn dispatch_msg(component_id: &str, nats_msg: async_nats::Message) {
@@ -241,22 +257,7 @@ impl Handler<Option<Context>> for NatsMessagingProvider {
         ctx: Option<Context>,
         msg: BrokerMessage,
     ) -> anyhow::Result<Result<(), String>> {
-        let nats_client =
-            if let Some(ref source_id) = ctx.and_then(|Context { component, .. }| component) {
-                let components = self.components.read().await;
-                let nats_bundle = match components.get(source_id) {
-                    Some(nats_bundle) => nats_bundle,
-                    None => {
-                        error!("component not linked: {source_id}");
-                        bail!("component did not make request")
-                    }
-                };
-                nats_bundle.client.clone()
-            } else {
-                error!("component did not make request");
-                bail!("component did not make request")
-            };
-
+        let nats_client = self.get_nats_client(ctx).await?;
         let res = nats_client
             .publish(msg.subject.to_string(), msg.body)
             .await
@@ -266,16 +267,25 @@ impl Handler<Option<Context>> for NatsMessagingProvider {
         Ok(res)
     }
 
-    // TODO: Implement `wasmcloud:messaging/consumer.publish` for the NATS provider
-    /// Components will call this function to publish a message to a subject and expect
-    /// a response back
     async fn request(
         &self,
-        _ctx: Option<Context>,
-        _subject: String,
-        _body: Bytes,
+        ctx: Option<Context>,
+        subject: String,
+        body: Bytes,
         _timeout_ms: u32,
     ) -> anyhow::Result<Result<BrokerMessage, String>> {
-        todo!("Implement wasmcloud:messaging/consumer.request for NATS provider")
+        let nats_client = self.get_nats_client(ctx).await?;
+        let res = nats_client
+            .request(subject.to_string(), body)
+            .await
+            .map(|msg| BrokerMessage {
+                body: msg.payload,
+                reply_to: msg.reply.map(|s| s.to_string()),
+                subject: msg.subject.to_string(),
+            })
+            .map_err(|e| e.to_string());
+
+        let _ = nats_client.flush().await;
+        Ok(res)
     }
 }
