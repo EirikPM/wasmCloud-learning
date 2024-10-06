@@ -13,11 +13,21 @@ impl Guest for HttpServer {
 
         let name = extract_name_from_query(&request);
 
+        wasi::logging::logging::log(
+            wasi::logging::logging::Level::Info,
+            "",
+            &format!("Greeting {name}"),
+        );
+
+        let bucket = wasi::keyvalue::store::open("").expect("Failed to open bucket");
+        let count = wasi::keyvalue::atomics::increment(&bucket, &name, 1)
+            .expect("Failed to increment count");
+
         ResponseOutparam::set(response_out, Ok(response));
         response_body
             .write()
             .unwrap()
-            .blocking_write_and_flush(format!("Hello, {}!\n", name).as_bytes())
+            .blocking_write_and_flush(format!("Hello x{}, {}!\n", count, name).as_bytes())
             .unwrap();
         OutgoingBody::finish(response_body, None).expect("failed to finish response body");
     }

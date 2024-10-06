@@ -23,6 +23,22 @@ spec:
         - type: spreadscaler
           properties:
             instances: 1
+        - type: link
+          properties:
+            target: kvredis
+            namespace: wasi
+            package: keyvalue
+            interfaces: [atomics, store]
+            target_config:
+              - name: redis-url
+                properties:
+                  url: redis://127.0.0.1:6379
+
+    # Add a capability provider that enables key-value store 
+    - name: kvredis
+      type: capability
+      properties:
+        image: ghcr.io/wasmcloud/keyvalue-redis:0.27.0
 
     # Add a capability provider that enables HTTP access
     - name: httpserver
@@ -38,10 +54,6 @@ spec:
         #       otel_exporter_otlp_metrics_endpoint: "http://metrics-backend/v1/metrics"
         #       otel_exporter_otlp_logs_endpoint: "http://logs-backend/v1/logs"
       traits:
-        # Establish a unidirectional link from this http server provider (the "source")
-        # to the `http-component` component (the "target") so the component can handle incoming HTTP requests,
-        #
-        # The source (this provider) is configured such that the HTTP server listens on 127.0.0.1:8080
         - type: link
           properties:
             target: http-component
