@@ -1,0 +1,24 @@
+[package]
+name = "wasmcloud-example-messaging-nats"
+version = "0.1.0"
+edition = "2021"
+description = """
+A capability provider that satisfies the 'wasmcloud:messaging' interface using NATS as a backend.
+"""
+
+[workspace]
+
+[badges.maintenance]
+status = "actively-developed"
+
+[dependencies]
+anyhow = "1.0.86"
+async-nats = "0.35.1"
+bytes = "1.6.0"
+futures = "0.3.30"
+serde = { version = "1.0.203" , features = ["derive"] }
+serde_json = "1.0.119"
+tokio = { version = "1.37.0", features = [ "full" ] }
+tracing = "0.1.40"
+wasmcloud-provider-sdk = "0.9.1"
+wit-bindgen-wrpc = "0.6.3"
